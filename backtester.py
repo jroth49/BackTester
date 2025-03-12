@@ -117,7 +117,7 @@ def algorithm(ticker_df):
     ticker_df['STO_Signal'] = np.where(ticker_df['%D'] < ticker_df['%K'], 1, ticker_df['Signal'])
 
     #this is actually what the buy condition is
-    ticker_df['Signal'] = np.where((ticker_df['RSI_Signal'] == 1), 1, ticker_df['Signal'])
+    ticker_df['Signal'] = np.where((ticker_df['RSI_Signal'] == 1) & (ticker_df['Volume Shift'] == 'increase'), 1, ticker_df['Signal'])
 
     #sell condition
     ticker_df['RSI_Signal'] = np.where(ticker_df['RSI'] > sell, -1, ticker_df['Signal'])
@@ -192,7 +192,7 @@ def display_plot(ticker_df, ind):
 
         if 'SMA' in c and 'Signal' not in c and 'SMA' in ind and (SMA_bool_1 or SMA_bool_2):
             SMA_Vals = c.split('_')[1]
-            plt.plot(ticker_df['Date'], ticker_df[f'SMA_{SMA_Vals}'], label=f'SMA_{SMA_Vals}', color=colors.pop(), alpha=0.5)
+            plt.plot(ticker_df[d], ticker_df[f'SMA_{SMA_Vals}'], label=f'SMA_{SMA_Vals}', color=colors.pop(), alpha=0.5)
             SMA_bool_2 = False if SMA_bool_1 == False else True 
             SMA_bool_1 = False
 
@@ -209,8 +209,8 @@ def display_plot(ticker_df, ind):
 
         if 'Band' in c and BB_bool and 'BB' in ind:
             #plt.plot(ticker_df.index, ticker_df['Middle Band'], label='Middle Band', color=colors.pop(), alpha=0.5)
-            plt.plot(ticker_df['Date'], ticker_df['Lower Band'], label='Lower Band', color=colors.pop(), alpha=0.5)
-            plt.plot(ticker_df['Date'], ticker_df['Upper Band'], label='Upper Band', color=colors.pop(), alpha=0.5)
+            plt.plot(ticker_df[d], ticker_df['Lower Band'], label='Lower Band', color=colors.pop(), alpha=0.5)
+            plt.plot(ticker_df[d], ticker_df['Upper Band'], label='Upper Band', color=colors.pop(), alpha=0.5)
             BB_bool = False #one time run
 
         if 'EMA' in c and 'EMA' in ind and (EMA_bool_1 or EMA_bool_2):
@@ -320,8 +320,8 @@ def main():
     RSI_Period = ind_val1
     RSI_Buy = ind_val2
     RSI_Sell = ind_val3
-    SMA_Roll_Win1 = 20
-    SMA_Roll_Win2 = 50
+    SMA_Roll_Win1 = 6
+    SMA_Roll_Win2 = 12
     BB_Period = 20
     BB_Multiplier = 1.1
     EMA_Roll_Win1 = 20
@@ -337,9 +337,15 @@ def main():
         file_path = f'historical_data/{ticker}/{year}/{interval}/split_month/{ticker}_{by_month}_{interval}.csv'
         year_data = read_historical_data(file_path) 
 
+    d = 'Date' if 'Date' in year_data.columns else 'Datetime'
 
     tick = year_data
     tick['Percent Change'] = tick['Close'].pct_change() * 100
+    tick['Volume Shift'] = tick['Volume'].diff().apply(lambda x: 'increase' if x > 0 else ('decrease' if x < 0 else 'no change'))
+    tick['Volume Difference'] = tick['Volume'].diff()
+    tick['Price Change'] = pd.to_numeric(tick['Close']).diff()
+    tick['Time Diff'] = (pd.to_datetime(tick[d]).diff().dt.total_seconds() / 60) / 1000
+    tick['Price Velocity'] = tick['Price Change'] / tick['Time Diff']
 
     tick = run_indicators(tick, ind_vars) #this generates finalized document to where you can calculate trades based off the numbers crunched
 
@@ -351,13 +357,14 @@ def main():
     final_money = money + (money * (total_percent / 100))
     tick.to_csv(f'analysis/{ticker}_{year}_{interval}.csv', index=False)
     
-    display_plot(tick, [indicator])
+    display_plot(tick, ['SMA'])
+    print(trades)
 
     all_trades = pd.DataFrame(columns=['Ticker', 'Close',  'Date', 'Buy/Sell'])
     for tr in trades:
         all_trades.loc[len(all_trades)] = [tr[2], tr[3], tr[1], tr[0]]
 
-    all_trades.to_csv(f'run/{ticker}_{year}_{interval}.csv', index=False)
+    all_trades.to_csv(f'run/{ticker}_{year}_{interval}_trades.csv', index=False)
 
 
     
